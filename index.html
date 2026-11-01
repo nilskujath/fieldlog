@@ -1,0 +1,907 @@
+<title>Field Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap">
+
+<style>
+  /* Layout: single-column mobile tool, big tap targets, stats up top */
+  :root {
+    --bg: #0f1114;
+    --surface: #1a1d22;
+    --surface-raised: #22262d;
+    --border: #2a2e36;
+    --fg: #e8e6e1;
+    --fg-dim: #8a8880;
+    --fg-muted: #5a5850;
+    --accent: #d4a843;
+    --accent-dim: rgba(212, 168, 67, 0.15);
+    --green: #4a9;
+    --green-dim: rgba(68, 170, 153, 0.15);
+    --red: #c45;
+    --blue: #5a9fd4;
+    --blue-dim: rgba(90, 159, 212, 0.15);
+    color-scheme: dark;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f5f3ee;
+      --surface: #eae7e0;
+      --surface-raised: #dfdcd5;
+      --border: #d0cdc6;
+      --fg: #1a1d22;
+      --fg-dim: #6a6860;
+      --fg-muted: #9a9890;
+      --accent: #b08820;
+      --accent-dim: rgba(176, 136, 32, 0.1);
+      --green: #2a7a66;
+      --green-dim: rgba(42, 122, 102, 0.1);
+      --red: #b03050;
+      --blue: #3a7fb0;
+      --blue-dim: rgba(58, 127, 176, 0.1);
+      color-scheme: light;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f5f3ee;
+    --surface: #eae7e0;
+    --surface-raised: #dfdcd5;
+    --border: #d0cdc6;
+    --fg: #1a1d22;
+    --fg-dim: #6a6860;
+    --fg-muted: #9a9890;
+    --accent: #b08820;
+    --accent-dim: rgba(176, 136, 32, 0.1);
+    --green: #2a7a66;
+    --green-dim: rgba(42, 122, 102, 0.1);
+    --red: #b03050;
+    --blue: #3a7fb0;
+    --blue-dim: rgba(58, 127, 176, 0.1);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto;
+    height: env(safe-area-inset-top, 0px);
+    z-index: 10;
+    background: var(--bg);
+  }
+
+  .app {
+    max-width: 420px;
+    margin: 0 auto;
+    padding-block: 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 100%;
+  }
+
+  /* Header / Level display */
+  .header {
+    text-align: center;
+    padding-block: 8px;
+  }
+
+  .level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .level-name {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--fg-dim);
+  }
+
+  .xp-display {
+    margin-top: 16px;
+  }
+
+  .xp-total {
+    font-family: 'Space Mono', monospace;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .xp-label {
+    font-size: 13px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+  }
+
+  .progress-bar {
+    margin-top: 16px;
+    height: 6px;
+    background: var(--surface-raised);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+    min-width: 2px;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--fg-muted);
+    margin-top: 6px;
+    font-family: 'Space Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Session stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+
+  /* Action buttons */
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-section-label {
+    font-size: 11px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding-left: 4px;
+    margin-bottom: -4px;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--fg);
+    font-family: 'Inter', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .action-btn:active {
+    transform: scale(0.97);
+    background: var(--surface-raised);
+  }
+
+  .action-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .action-btn .xp-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 4px 10px;
+    min-width: 52px;
+    text-align: center;
+  }
+
+  .action-btn.approach .xp-tag {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .action-btn.difficult .xp-tag {
+    background: var(--blue-dim);
+    color: var(--blue);
+  }
+
+  .action-btn.chicken {
+    border-color: var(--red);
+    border-style: dashed;
+  }
+
+  .action-btn.chicken .xp-tag {
+    background: rgba(204, 68, 85, 0.15);
+    color: var(--red);
+  }
+
+  .action-btn.chicken .flash {
+    color: var(--red);
+  }
+
+  .action-btn.number .xp-tag {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .action-btn.pull .xp-tag {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .action-btn.pull {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* Flash animation on tap */
+  .action-btn .flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @keyframes flashUp {
+    0% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, -120%); }
+  }
+
+  .flash.active {
+    animation: flashUp 0.6s ease-out forwards;
+  }
+
+  /* Log section */
+  .log-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .log-title {
+    font-size: 13px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .log-entry .action-name {
+    color: var(--fg);
+  }
+
+  .log-entry .log-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-entry .log-xp {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-left: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-entry {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .log-entry .remove-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
+
+  .log-entry .remove-btn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+  .log-entry.expanded .remove-btn {
+    display: inline-block;
+  }
+
+  .log-empty {
+    color: var(--fg-muted);
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+  }
+
+  /* Backup section */
+  .backup-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+
+  .backup-header {
+    font-size: 13px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+
+  .backup-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .backup-btn {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .backup-btn:active { background: var(--surface-raised); }
+  .backup-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .import-area {
+    margin-top: 12px;
+  }
+
+  .import-area textarea {
+    width: 100%;
+    height: 80px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 10px;
+    resize: vertical;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .import-area textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .import-confirm {
+    margin-top: 8px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .import-confirm:active { opacity: 0.8; }
+  .import-confirm:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .backup-msg {
+    font-size: 13px;
+    color: var(--green);
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  /* Undo toast */
+  .undo-toast {
+    position: fixed;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--fg);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 20;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .undo-toast.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .undo-btn {
+    background: var(--accent-dim);
+    border: none;
+    color: var(--accent);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .undo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flash.active { animation: none; opacity: 0; }
+    .progress-fill { transition: none; }
+  }
+</style>
+
+<div class="app">
+  <div class="header">
+    <div class="level-badge">
+      <span id="level-num">LVL 1</span>
+      <span class="level-name" id="level-name">Beginner</span>
+    </div>
+    <div class="xp-display">
+      <div class="xp-total" id="xp-total">0</div>
+      <div class="xp-label">Total XP</div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+    <div class="progress-label">
+      <span id="xp-current">0</span>
+      <span id="xp-next">50 to LVL 2</span>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-today">0</div>
+      <div class="stat-label">Today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-approaches">0</div>
+      <div class="stat-label">Opens</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-pulls">0</div>
+      <div class="stat-label">Pulls</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="action-section-label">Open</div>
+    <button class="action-btn approach" data-action="simple" data-xp="1">
+      Simple approach
+      <span class="xp-tag">+1</span>
+      <span class="flash">+1</span>
+    </button>
+    <button class="action-btn difficult" data-action="difficult" data-xp="3">
+      Difficult approach
+      <span class="xp-tag">+3</span>
+      <span class="flash">+3</span>
+    </button>
+    <button class="action-btn chicken" data-action="chicken" data-xp="-1">
+      Chicken out
+      <span class="xp-tag">-1</span>
+      <span class="flash">-1</span>
+    </button>
+
+    <div class="action-section-label" style="margin-top: 8px">Close</div>
+    <button class="action-btn number" data-action="number" data-xp="10">
+      Solid number
+      <span class="xp-tag">+10</span>
+      <span class="flash">+10</span>
+    </button>
+    <button class="action-btn pull" data-action="pull" data-xp="100">
+      Pull
+      <span class="xp-tag">+100</span>
+      <span class="flash">+100</span>
+    </button>
+  </div>
+
+  <div class="log-section">
+    <div class="log-header">
+      <span class="log-title">Recent</span>
+    </div>
+    <div class="log-list" id="log-list">
+      <div class="log-empty" id="log-empty">No entries yet</div>
+    </div>
+  </div>
+
+  <div class="backup-section">
+    <div class="backup-header">Backup</div>
+    <div class="backup-row">
+      <button class="backup-btn" id="export-btn">Export</button>
+      <button class="backup-btn" id="import-btn">Import</button>
+    </div>
+    <div class="backup-msg" id="backup-msg" hidden></div>
+    <div class="import-area" id="import-area" hidden>
+      <textarea id="import-text" placeholder="Paste exported data here"></textarea>
+      <button class="import-confirm" id="import-confirm">Restore data</button>
+    </div>
+  </div>
+</div>
+
+<div class="undo-toast" id="undo-toast">
+  <span id="undo-text">Logged +1</span>
+  <button class="undo-btn" id="undo-btn">Undo</button>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  const LEVELS = [
+    { threshold: -Infinity, name: 'Chode' },
+    { threshold: 0,         name: 'Hard Case' },
+    { threshold: 800,    name: 'Newbie' },
+    { threshold: 2500,   name: 'Low Beginner' },
+    { threshold: 6000,   name: 'Solid Beginner' },
+    { threshold: 12000,  name: 'Low Intermediate' },
+    { threshold: 20000,  name: 'Solid Intermediate' },
+    { threshold: 35000,  name: 'Advanced' },
+    { threshold: 50000,  name: 'MPUA' },
+    { threshold: 80000,  name: 'OG' },
+    { threshold: 150000, name: 'GOAT' }
+  ];
+
+  const ACTION_LABELS = {
+    simple: 'Simple approach',
+    difficult: 'Difficult approach',
+    chicken: 'Chicken out',
+    number: 'Solid number',
+    pull: 'Pull'
+  };
+
+  // State
+  let state = loadState();
+  let undoStack = [];
+  let undoTimer = null;
+
+  function loadState() {
+    try {
+      const s = localStorage.getItem('fieldlog_state');
+      if (s) return JSON.parse(s);
+    } catch(e) {}
+    return { totalXP: 0, log: [] };
+  }
+
+  function saveState() {
+    try { localStorage.setItem('fieldlog_state', JSON.stringify(state)); } catch(e) {}
+  }
+
+  function getLevel(xp) {
+    let lvl = 0;
+    for (let i = LEVELS.length - 1; i >= 0; i--) {
+      if (xp >= LEVELS[i].threshold) { lvl = i; break; }
+    }
+    return lvl;
+  }
+
+  function todayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function render() {
+    const xp = state.totalXP;
+    const lvl = getLevel(xp);
+    const current = LEVELS[lvl];
+    const next = LEVELS[lvl + 1];
+
+    document.getElementById('xp-total').textContent = xp.toLocaleString();
+    var lvlDisplay = lvl === 0 ? -1 : lvl;
+    document.getElementById('level-num').textContent = 'LVL ' + lvlDisplay;
+    document.getElementById('level-name').textContent = current.name;
+
+    if (next) {
+      const progress = ((xp - current.threshold) / (next.threshold - current.threshold)) * 100;
+      document.getElementById('progress-fill').style.width = Math.min(progress, 100) + '%';
+      document.getElementById('xp-current').textContent = xp + ' XP';
+      var nextLvlDisplay = (lvl + 1) === 0 ? -1 : (lvl + 1);
+      document.getElementById('xp-next').textContent = (next.threshold - xp) + ' to LVL ' + nextLvlDisplay;
+    } else {
+      document.getElementById('progress-fill').style.width = '100%';
+      document.getElementById('xp-current').textContent = xp + ' XP';
+      document.getElementById('xp-next').textContent = 'Max level';
+    }
+
+    // Today stats
+    const today = todayKey();
+    const todayEntries = state.log.filter(e => e.date === today);
+    const todayXP = todayEntries.reduce((s, e) => s + e.xp, 0);
+    const approaches = state.log.filter(e => e.action === 'simple' || e.action === 'difficult').length;
+    const pulls = state.log.filter(e => e.action === 'pull').length;
+
+    document.getElementById('stat-today').textContent = todayXP;
+    document.getElementById('stat-approaches').textContent = approaches;
+    document.getElementById('stat-pulls').textContent = pulls;
+
+    // Log
+    const logList = document.getElementById('log-list');
+    const logEmpty = document.getElementById('log-empty');
+
+    // Remove old entries (keep empty message)
+    Array.from(logList.children).forEach(c => {
+      if (c !== logEmpty) c.remove();
+    });
+
+    if (state.log.length === 0) {
+      logEmpty.hidden = false;
+    } else {
+      logEmpty.hidden = true;
+      // Show last 20, newest first
+      const recent = state.log.slice(-20).reverse();
+      recent.forEach(entry => {
+        const el = document.createElement('div');
+        el.className = 'log-entry';
+        const time = entry.time || '';
+        var xpText = entry.xp >= 0 ? '+' + entry.xp : '' + entry.xp;
+        var xpColor = entry.xp < 0 ? 'var(--red)' : 'var(--accent)';
+        el.innerHTML =
+          '<span class="action-name">' + (ACTION_LABELS[entry.action] || entry.action) + '</span>' +
+          '<span style="display:flex;align-items:center">' +
+            '<span class="log-time">' + time + '</span>' +
+            '<span class="log-xp" style="color:' + xpColor + '">' + xpText + '</span>' +
+            '<button class="remove-btn">Remove</button>' +
+          '</span>';
+        el.addEventListener('click', function(e) {
+          if (e.target.classList.contains('remove-btn')) {
+            removeEntry(entry.ts);
+            return;
+          }
+          // Toggle expanded
+          var wasExpanded = el.classList.contains('expanded');
+          logList.querySelectorAll('.log-entry.expanded').forEach(function(x) { x.classList.remove('expanded'); });
+          if (!wasExpanded) el.classList.add('expanded');
+        });
+        logList.appendChild(el);
+      });
+    }
+  }
+
+  function logAction(action, xp) {
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const entry = { action, xp, date: todayKey(), time, ts: now.getTime() };
+
+    state.totalXP += xp;
+    state.log.push(entry);
+    saveState();
+    render();
+
+    // Undo
+    undoStack.push(entry);
+    var prefix = xp >= 0 ? '+' : '';
+    showUndo(prefix + xp + ' ' + ACTION_LABELS[action]);
+  }
+
+  function showUndo(text) {
+    const toast = document.getElementById('undo-toast');
+    document.getElementById('undo-text').textContent = text;
+    toast.classList.add('visible');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+      toast.classList.remove('visible');
+      undoStack = [];
+    }, 4000);
+  }
+
+  function undo() {
+    if (undoStack.length === 0) return;
+    const entry = undoStack.pop();
+    state.totalXP -= entry.xp;
+    const idx = state.log.findIndex(e => e.ts === entry.ts);
+    if (idx !== -1) state.log.splice(idx, 1);
+    saveState();
+    render();
+    document.getElementById('undo-toast').classList.remove('visible');
+    clearTimeout(undoTimer);
+  }
+
+  // Event listeners
+  document.querySelectorAll('.action-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const action = this.dataset.action;
+      const xp = parseInt(this.dataset.xp);
+      logAction(action, xp);
+
+      // Flash animation
+      const flash = this.querySelector('.flash');
+      flash.classList.remove('active');
+      void flash.offsetWidth;
+      flash.classList.add('active');
+    });
+  });
+
+  document.getElementById('undo-btn').addEventListener('click', undo);
+
+  function removeEntry(ts) {
+    var idx = state.log.findIndex(function(e) { return e.ts === ts; });
+    if (idx === -1) return;
+    state.totalXP -= state.log[idx].xp;
+    state.log.splice(idx, 1);
+    saveState();
+    render();
+  }
+
+  // Export
+  document.getElementById('export-btn').addEventListener('click', function() {
+    var data = JSON.stringify(state);
+    var msg = document.getElementById('backup-msg');
+    try {
+      navigator.clipboard.writeText(data).then(function() {
+        msg.textContent = 'Copied to clipboard. Paste into Notes to save.';
+        msg.hidden = false;
+        setTimeout(function() { msg.hidden = true; }, 4000);
+      }, function() {
+        // Fallback: show in import textarea so user can select+copy
+        var area = document.getElementById('import-area');
+        var ta = document.getElementById('import-text');
+        ta.value = data;
+        area.hidden = false;
+        ta.select();
+        msg.textContent = 'Select all and copy the text above.';
+        msg.hidden = false;
+      });
+    } catch(e) {
+      var area = document.getElementById('import-area');
+      var ta = document.getElementById('import-text');
+      ta.value = data;
+      area.hidden = false;
+      ta.select();
+      msg.textContent = 'Select all and copy the text above.';
+      msg.hidden = false;
+    }
+  });
+
+  // Import
+  document.getElementById('import-btn').addEventListener('click', function() {
+    var area = document.getElementById('import-area');
+    area.hidden = !area.hidden;
+    if (!area.hidden) document.getElementById('import-text').value = '';
+  });
+
+  document.getElementById('import-confirm').addEventListener('click', function() {
+    var raw = document.getElementById('import-text').value.trim();
+    var msg = document.getElementById('backup-msg');
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      if (typeof parsed.totalXP !== 'number' || !Array.isArray(parsed.log)) {
+        msg.textContent = 'Invalid data format.';
+        msg.style.color = 'var(--red)';
+        msg.hidden = false;
+        setTimeout(function() { msg.hidden = true; msg.style.color = 'var(--green)'; }, 3000);
+        return;
+      }
+      state = parsed;
+      saveState();
+      render();
+      document.getElementById('import-area').hidden = true;
+      msg.textContent = 'Data restored.';
+      msg.style.color = 'var(--green)';
+      msg.hidden = false;
+      setTimeout(function() { msg.hidden = true; }, 3000);
+    } catch(e) {
+      msg.textContent = 'Invalid JSON. Check your paste.';
+      msg.style.color = 'var(--red)';
+      msg.hidden = false;
+      setTimeout(function() { msg.hidden = true; msg.style.color = 'var(--green)'; }, 3000);
+    }
+  });
+
+  // Init
+  render();
+})();
+</script>
