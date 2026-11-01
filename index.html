@@ -96,6 +96,7 @@
     flex-direction: column;
     gap: 24px;
     min-height: 100%;
+    height: 100%;
   }
 
   /* Header / Level display */
@@ -329,6 +330,9 @@
   .log-section {
     border-top: 1px solid var(--border);
     padding-top: 16px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
 
   .log-header {
@@ -349,7 +353,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-height: 200px;
+    flex: 1;
     overflow-y: auto;
   }
 
@@ -610,15 +614,6 @@
     </button>
   </div>
 
-  <div class="log-section">
-    <div class="log-header">
-      <span class="log-title">Recent</span>
-    </div>
-    <div class="log-list" id="log-list">
-      <div class="log-empty" id="log-empty">No entries yet</div>
-    </div>
-  </div>
-
   <div class="backup-section">
     <div class="backup-header">Backup</div>
     <div class="backup-row">
@@ -629,6 +624,15 @@
     <div class="import-area" id="import-area" hidden>
       <textarea id="import-text" placeholder="Paste exported data here"></textarea>
       <button class="import-confirm" id="import-confirm">Restore data</button>
+    </div>
+  </div>
+
+  <div class="log-section">
+    <div class="log-header">
+      <span class="log-title">Recent</span>
+    </div>
+    <div class="log-list" id="log-list">
+      <div class="log-empty" id="log-empty">No entries yet</div>
     </div>
   </div>
 </div>
