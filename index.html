@@ -181,7 +181,7 @@
   /* Session stats row */
   .stats-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
   }
 
@@ -408,6 +408,14 @@
     display: inline-block;
   }
 
+  .log-entry.forgiven {
+    opacity: 0.4;
+  }
+
+  .log-entry.forgiven .action-name {
+    text-decoration: line-through;
+  }
+
   .log-empty {
     color: var(--fg-muted);
     font-size: 14px;
@@ -578,6 +586,10 @@
       <div class="stat-value" id="stat-pulls">0</div>
       <div class="stat-label">Pulls</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-streak">0</div>
+      <div class="stat-label">Streak</div>
+    </div>
   </div>
 
   <div class="actions">
@@ -643,7 +655,7 @@
 (function() {
   'use strict';
 
-  const LEVELS = [
+  var LEVELS = [
     { threshold: -Infinity, name: 'Chode' },
     { threshold: 0,         name: 'Hard Case' },
     { threshold: 800,    name: 'Newbie' },
@@ -657,7 +669,7 @@
     { threshold: 150000, name: 'GOAT' }
   ];
 
-  const ACTION_LABELS = {
+  var ACTION_LABELS = {
     simple: 'Simple approach',
     difficult: 'Difficult approach',
     chicken: 'Chicken out',
@@ -665,17 +677,43 @@
     pull: 'Pull'
   };
 
-  // State
-  let state = loadState();
-  let undoStack = [];
-  let undoTimer = null;
+  var state = loadState();
+  var undoStack = [];
+  var undoTimer = null;
+  var lastLat = null;
+  var lastLng = null;
+  var geoWatchId = null;
+
+  // Start watching location silently
+  function initGeo() {
+    if (!navigator.geolocation) return;
+    geoWatchId = navigator.geolocation.watchPosition(
+      function(pos) {
+        lastLat = pos.coords.latitude;
+        lastLng = pos.coords.longitude;
+      },
+      function() {},
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }
+    );
+  }
+  initGeo();
 
   function loadState() {
     try {
-      const s = localStorage.getItem('fieldlog_state');
-      if (s) return JSON.parse(s);
+      var s = localStorage.getItem('fieldlog_state');
+      if (s) {
+        var parsed = JSON.parse(s);
+        // Migrate: add forgiven field to old chicken entries
+        parsed.log.forEach(function(e) {
+          if (e.action === 'chicken' && e.forgiven === undefined) {
+            e.forgiven = false;
+          }
+        });
+        if (parsed.streak === undefined) parsed.streak = 0;
+        return parsed;
+      }
     } catch(e) {}
-    return { totalXP: 0, log: [] };
+    return { totalXP: 0, log: [], streak: 0 };
   }
 
   function saveState() {
@@ -683,8 +721,8 @@
   }
 
   function getLevel(xp) {
-    let lvl = 0;
-    for (let i = LEVELS.length - 1; i >= 0; i--) {
+    var lvl = 0;
+    for (var i = LEVELS.length - 1; i >= 0; i--) {
       if (xp >= LEVELS[i].threshold) { lvl = i; break; }
     }
     return lvl;
@@ -694,11 +732,60 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  // Full recalc: replay log, apply all amnesty, recalculate XP and streak
+  function fullRecalc() {
+    state.log.forEach(function(e) {
+      if (e.action === 'chicken') e.forgiven = false;
+    });
+
+    var streak = 0;
+    for (var i = 0; i < state.log.length; i++) {
+      var e = state.log[i];
+      if (e.action === 'chicken') {
+        streak = 0;
+      } else {
+        streak++;
+        if (streak >= 2) {
+          var forgiven = 0;
+          for (var j = 0; j < i && forgiven < 2; j++) {
+            if (state.log[j].action === 'chicken' && !state.log[j].forgiven) {
+              state.log[j].forgiven = true;
+              forgiven++;
+            }
+          }
+        }
+      }
+    }
+
+    state.streak = streak;
+    recalcXP();
+  }
+
+  // Incremental amnesty: forgive up to 2 oldest unforgiven chicken-outs
+  function applyAmnestyNow() {
+    var forgiven = 0;
+    for (var i = 0; i < state.log.length && forgiven < 2; i++) {
+      if (state.log[i].action === 'chicken' && !state.log[i].forgiven) {
+        state.log[i].forgiven = true;
+        forgiven++;
+      }
+    }
+    return forgiven;
+  }
+
+  function recalcXP() {
+    state.totalXP = 0;
+    state.log.forEach(function(e) {
+      if (e.action === 'chicken' && e.forgiven) return;
+      state.totalXP += e.xp;
+    });
+  }
+
   function render() {
-    const xp = state.totalXP;
-    const lvl = getLevel(xp);
-    const current = LEVELS[lvl];
-    const next = LEVELS[lvl + 1];
+    var xp = state.totalXP;
+    var lvl = getLevel(xp);
+    var current = LEVELS[lvl];
+    var next = LEVELS[lvl + 1];
 
     document.getElementById('xp-total').textContent = xp.toLocaleString();
     var lvlDisplay = lvl === 0 ? -1 : lvl;
@@ -706,7 +793,7 @@
     document.getElementById('level-name').textContent = current.name;
 
     if (next) {
-      const progress = ((xp - current.threshold) / (next.threshold - current.threshold)) * 100;
+      var progress = ((xp - current.threshold) / (next.threshold - current.threshold)) * 100;
       document.getElementById('progress-fill').style.width = Math.min(progress, 100) + '%';
       document.getElementById('xp-current').textContent = xp + ' XP';
       var nextLvlDisplay = (lvl + 1) === 0 ? -1 : (lvl + 1);
@@ -717,23 +804,27 @@
       document.getElementById('xp-next').textContent = 'Max level';
     }
 
-    // Today stats
-    const today = todayKey();
-    const todayEntries = state.log.filter(e => e.date === today);
-    const todayXP = todayEntries.reduce((s, e) => s + e.xp, 0);
-    const approaches = state.log.filter(e => e.action === 'simple' || e.action === 'difficult').length;
-    const pulls = state.log.filter(e => e.action === 'pull').length;
+    var today = todayKey();
+    var todayEntries = state.log.filter(function(e) { return e.date === today; });
+    var todayXP = todayEntries.reduce(function(s, e) {
+      if (e.action === 'chicken' && e.forgiven) return s;
+      return s + e.xp;
+    }, 0);
+    var approaches = state.log.filter(function(e) {
+      return e.action === 'simple' || e.action === 'difficult';
+    }).length;
+    var pulls = state.log.filter(function(e) { return e.action === 'pull'; }).length;
 
     document.getElementById('stat-today').textContent = todayXP;
     document.getElementById('stat-approaches').textContent = approaches;
     document.getElementById('stat-pulls').textContent = pulls;
+    document.getElementById('stat-streak').textContent = state.streak;
 
     // Log
-    const logList = document.getElementById('log-list');
-    const logEmpty = document.getElementById('log-empty');
+    var logList = document.getElementById('log-list');
+    var logEmpty = document.getElementById('log-empty');
 
-    // Remove old entries (keep empty message)
-    Array.from(logList.children).forEach(c => {
+    Array.from(logList.children).forEach(function(c) {
       if (c !== logEmpty) c.remove();
     });
 
@@ -741,14 +832,22 @@
       logEmpty.hidden = false;
     } else {
       logEmpty.hidden = true;
-      // Show last 20, newest first
-      const recent = state.log.slice(-20).reverse();
-      recent.forEach(entry => {
-        const el = document.createElement('div');
+      var recent = state.log.slice(-20).reverse();
+      recent.forEach(function(entry) {
+        var el = document.createElement('div');
         el.className = 'log-entry';
-        const time = entry.time || '';
-        var xpText = entry.xp >= 0 ? '+' + entry.xp : '' + entry.xp;
-        var xpColor = entry.xp < 0 ? 'var(--red)' : 'var(--accent)';
+        if (entry.action === 'chicken' && entry.forgiven) {
+          el.classList.add('forgiven');
+        }
+        var time = entry.time || '';
+        var xpText, xpColor;
+        if (entry.action === 'chicken' && entry.forgiven) {
+          xpText = '0';
+          xpColor = 'var(--fg-muted)';
+        } else {
+          xpText = entry.xp >= 0 ? '+' + entry.xp : '' + entry.xp;
+          xpColor = entry.xp < 0 ? 'var(--red)' : 'var(--accent)';
+        }
         el.innerHTML =
           '<span class="action-name">' + (ACTION_LABELS[entry.action] || entry.action) + '</span>' +
           '<span style="display:flex;align-items:center">' +
@@ -761,9 +860,10 @@
             removeEntry(entry.ts);
             return;
           }
-          // Toggle expanded
           var wasExpanded = el.classList.contains('expanded');
-          logList.querySelectorAll('.log-entry.expanded').forEach(function(x) { x.classList.remove('expanded'); });
+          logList.querySelectorAll('.log-entry.expanded').forEach(function(x) {
+            x.classList.remove('expanded');
+          });
           if (!wasExpanded) el.classList.add('expanded');
         });
         logList.appendChild(el);
@@ -772,27 +872,41 @@
   }
 
   function logAction(action, xp) {
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const entry = { action, xp, date: todayKey(), time, ts: now.getTime() };
+    var now = new Date();
+    var time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    var entry = { action: action, xp: xp, date: todayKey(), time: time, ts: now.getTime() };
+    if (lastLat !== null) { entry.lat = lastLat; entry.lng = lastLng; }
+    if (action === 'chicken') entry.forgiven = false;
 
-    state.totalXP += xp;
     state.log.push(entry);
+
+    var amnesty = 0;
+    if (action === 'chicken') {
+      state.streak = 0;
+    } else {
+      state.streak++;
+      if (state.streak >= 2) {
+        amnesty = applyAmnestyNow();
+      }
+    }
+
+    recalcXP();
     saveState();
     render();
 
-    // Undo
     undoStack.push(entry);
     var prefix = xp >= 0 ? '+' : '';
-    showUndo(prefix + xp + ' ' + ACTION_LABELS[action]);
+    var toastText = prefix + xp + ' ' + ACTION_LABELS[action];
+    if (amnesty > 0) toastText += ' | ' + amnesty + ' forgiven';
+    showUndo(toastText);
   }
 
   function showUndo(text) {
-    const toast = document.getElementById('undo-toast');
+    var toast = document.getElementById('undo-toast');
     document.getElementById('undo-text').textContent = text;
     toast.classList.add('visible');
     clearTimeout(undoTimer);
-    undoTimer = setTimeout(() => {
+    undoTimer = setTimeout(function() {
       toast.classList.remove('visible');
       undoStack = [];
     }, 4000);
@@ -800,25 +914,33 @@
 
   function undo() {
     if (undoStack.length === 0) return;
-    const entry = undoStack.pop();
-    state.totalXP -= entry.xp;
-    const idx = state.log.findIndex(e => e.ts === entry.ts);
+    var entry = undoStack.pop();
+    var idx = state.log.findIndex(function(e) { return e.ts === entry.ts; });
     if (idx !== -1) state.log.splice(idx, 1);
+    fullRecalc();
     saveState();
     render();
     document.getElementById('undo-toast').classList.remove('visible');
     clearTimeout(undoTimer);
   }
 
+  function removeEntry(ts) {
+    var idx = state.log.findIndex(function(e) { return e.ts === ts; });
+    if (idx === -1) return;
+    state.log.splice(idx, 1);
+    fullRecalc();
+    saveState();
+    render();
+  }
+
   // Event listeners
-  document.querySelectorAll('.action-btn').forEach(btn => {
+  document.querySelectorAll('.action-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      const action = this.dataset.action;
-      const xp = parseInt(this.dataset.xp);
+      var action = this.dataset.action;
+      var xp = parseInt(this.dataset.xp);
       logAction(action, xp);
 
-      // Flash animation
-      const flash = this.querySelector('.flash');
+      var flash = this.querySelector('.flash');
       flash.classList.remove('active');
       void flash.offsetWidth;
       flash.classList.add('active');
@@ -826,15 +948,6 @@
   });
 
   document.getElementById('undo-btn').addEventListener('click', undo);
-
-  function removeEntry(ts) {
-    var idx = state.log.findIndex(function(e) { return e.ts === ts; });
-    if (idx === -1) return;
-    state.totalXP -= state.log[idx].xp;
-    state.log.splice(idx, 1);
-    saveState();
-    render();
-  }
 
   // Export
   document.getElementById('export-btn').addEventListener('click', function() {
@@ -846,7 +959,6 @@
         msg.hidden = false;
         setTimeout(function() { msg.hidden = true; }, 4000);
       }, function() {
-        // Fallback: show in import textarea so user can select+copy
         var area = document.getElementById('import-area');
         var ta = document.getElementById('import-text');
         ta.value = data;
@@ -887,6 +999,11 @@
         return;
       }
       state = parsed;
+      state.log.forEach(function(e) {
+        if (e.action === 'chicken' && e.forgiven === undefined) e.forgiven = false;
+      });
+      if (state.streak === undefined) state.streak = 0;
+      fullRecalc();
       saveState();
       render();
       document.getElementById('import-area').hidden = true;
@@ -902,7 +1019,8 @@
     }
   });
 
-  // Init
+  // Init: full recalc handles migration, amnesty, streak, XP
+  fullRecalc();
   render();
 })();
 </script>
